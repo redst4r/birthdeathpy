@@ -1,61 +1,9 @@
-from scipy import stats
-import numpy as np
-import pandas as pd
-import seaborn as sns
-import sys
-import matplotlib.pyplot as plt
-sys.path.append('/home/michi/postdoc_seattle/scBarcoding_RNASeqWorkflow/')
-from bc_extract.upset_plot import upset_wrapper
 from anytree import Node, RenderTree
-import tqdm
-import collections
-def discrete_birth_death_process(initial_vector, p_div):
-    """
-    initial_vector: 1 x n_barcodes
-    """
 
-    assert initial_vector.shape[0] == 1 and initial_vector.ndim == 2
-    timecourse = [initial_vector]
-    current_vector = initial_vector
-    gen_count = 0
-    while np.sum(current_vector) < 1e6 and np.sum(current_vector) > 0:
-        print()
-        gen_count+=1
-        """
-        for each barcode, each cell throws a dice to survive or die
-        if theres 100 cells, the number of cells in the next gen will be binomial: k = Binom(N=100, p)
-        """
-        dividing_cells = np.random.binomial(current_vector, p=p_div) # the number of cells that will divide
-        next_gen = 2 * dividing_cells
 
-        print(f'Gen: {gen_count}, cells {np.sum(current_vector)}')
-        timecourse.append(next_gen)
-        current_vector = next_gen
-
-    A = np.concatenate(timecourse)
-
-    B = A[:, A.sum(0)>0] # onle barcodes >0
-
-#     plt.figure()
-#     plt.subplot(221)
-#     plt.plot(B)
-#     plt.subplot(222)
-#     plt.plot(B+1)
-#     plt.yscale('log')
-#     plt.subplot(223)
-#     plt.scatter(B[0]+1, B[-1]+1)
-#     plt.xscale('log')
-#     plt.yscale('log')
-
-#     plt.subplot(224)
-#     p_ini = B[0] / B[0].sum()
-#     p_final = B[-1] / B[-1].sum()
-#     plt.scatter(p_ini, p_final, alpha=0.5)
-#     plt.xscale('log')
-#     plt.yscale('log')
-
-    return A
-
+def print_tree(root):
+    for pre, fill, node in RenderTree(root):
+        print("%s%s" % (pre, node.name))
 
 def PCR_amplification_with_errors(initial_seq, rounds, per_base_error_rate):
     "simulating the tree exatly // slow"
@@ -77,23 +25,6 @@ def PCR_amplification_with_errors(initial_seq, rounds, per_base_error_rate):
 
     for pre, fill, node in RenderTree(root):
         print("%s%s" % (pre, node.name))
-
-def print_tree(root):
-    for pre, fill, node in RenderTree(root):
-        print("%s%s" % (pre, node.name))
-
-def mutate_1BP(input_seq):
-    error_position = np.random.choice(len(input_seq))
-    bases = [_ for _ in ['A','T','G','C'] if _!= input_seq[error_position]] #make sure that we mutate intoa different base
-    error_nucleotide = np.random.choice(bases)
-    s1 = [input_seq[i] if i!= error_position else error_nucleotide for i in range(len(input_seq))]
-    s1 = "".join(s1)
-
-#     print(s1)
-#     print(seq)
-#     print('--------------')
-    assert s1!=input_seq, f'asked to mutate, but no mutation {error_position}, {error_nucleotide}, {s1}, {input_seq}, {bases}'
-    return s1
 
 
 def PCR_amplification_with_errors_faster(initial_seq_freq:dict, rounds, per_base_error_rate, prob_death, VERBOSE=False, track_tree=True):
@@ -165,82 +96,34 @@ def PCR_amplification_with_errors_faster(initial_seq_freq:dict, rounds, per_base
     return dict(final_freqs), root
 
 
-def PCR_amplification_with_errors_faster_DICT(initial_seq_freq:dict, rounds, per_base_error_rate, prob_death, VERBOSE=False, track_tree=True):
-    "same as above, but acting on a DICT instead of a list of dicts"
-
-    assert isinstance(initial_seq_freq, dict), 'first argument MUST be a dict'
-
-    bplength = len(list(initial_seq_freq.keys())[0])
-    n_mutations = 0
-    root = None
-    current_level = initial_seq_freq.copy()
-
-    for cycle in range(rounds):
-        next_level = collections.defaultdict(int)
-        total_entities = sum(list(current_level.values()))
-        # total_entities = sum([n.name['freq'] for n in current_level]) if track_tree else sum([n['freq'] for n in current_level])
-
-        print(f'cycle {cycle}:\t{total_entities:.3e} molecules total')
-        for seq, f in tqdm.tqdm(current_level.items(), desc=f'Amplifiying// {len(current_level)} subclones'):
-
-            # a small fraction will disapear
-            died = np.random.binomial(f, p=prob_death)
-#             print(f'{died}/{f} died')
-            if f == died and VERBOSE:
-                print(f'\t\t{seq} exterminated')
-            f = f-died
-
-            # most molecules wont have an error:
-            error_free_prob = (1- per_base_error_rate)**bplength
-            error_free = np.random.binomial(n=f, p=error_free_prob)
-            if error_free > 0:
-                next_level[seq]+=2*error_free
-
-            # prob_one_error = (1- per_base_error_rate)**(bplength -1) * per_base_error_rate * bplength
-            one_error = f - error_free
-            if one_error > 0 and VERBOSE:
-                print('\t\tMutation')
-            n_mutations += one_error
-            for _ in range(one_error):
-                s1 = mutate_1BP(seq)
-                next_level[s1] += 2
-
-        current_level = next_level
-
-    total_entities = sum(current_level.values())
-    print(f'Final:\t{total_entities:.3e} molecules total, {n_mutations} errors, {len(next_level)} subclones')
-
-
-    final_freqs = current_level.copy()
-    return final_freqs, root
-
-
-
-def main():
-    import seaborn as sns
-    import toolz
-
-    nstart = 250
-    initial_seq_freq = [
-        {'seq': "".join(np.random.choice(['A','G','T','C'], 20)), 'freq':1} for _ in range(nstart)
-    ]
-    rounds  =np.ceil(np.log2(1e6) - np.log2(nstart))
+def discrete_birth_death_process(initial_vector, p_div):
     """
-    lets simulate the expansion of a population of barcoded cells
-    - barcodes might mutate
-    - cells might die, ie, barcodes could go extinct
+    initial_vector: 1 x n_barcodes
     """
-    final_bcs, tree = PCR_amplification_with_errors_faster(initial_seq_freq, rounds=int(rounds),
-                                         per_base_error_rate=1e-7,
-                                         prob_death=0.01)
 
-    for pre, fill, node in RenderTree(tree):
-        print("%s%s" % (pre, node.name))
+    assert initial_vector.shape[0] == 1 and initial_vector.ndim == 2
+    timecourse = [initial_vector]
+    current_vector = initial_vector
+    gen_count = 0
+    while np.sum(current_vector) < 1e6 and np.sum(current_vector) > 0:
+        print()
+        gen_count+=1
+        """
+        for each barcode, each cell throws a dice to survive or die
+        if theres 100 cells, the number of cells in the next gen will be binomial: k = Binom(N=100, p)
+        """
+        dividing_cells = np.random.binomial(current_vector, p=p_div) # the number of cells that will divide
+        next_gen = 2 * dividing_cells
 
-    # look at the clone-size distribution of the non mutated barcodes
-    sns.distplot(list(final_bcs.values()))
+        print(f'Gen: {gen_count}, cells {np.sum(current_vector)}')
+        timecourse.append(next_gen)
+        current_vector = next_gen
 
-    sns.distplot(list(toolz.dicttoolz.valfilter(lambda v: v>1000, final_bcs).values()))
+    A = np.concatenate(timecourse)
+
+    B = A[:, A.sum(0)>0] # onle barcodes >0
+
+    return A
 
 
 def main_old():
@@ -314,6 +197,3 @@ def main_old():
     df = pd.DataFrame(Y.T.astype('int'), columns=['experiment_%d'%i for i in range(1,len(cell_initial)+1)])
     # df['barcode'] = np.arange(len(df))
     upset_wrapper(df, '/tmp/upset.pdf')
-
-if __name__ == '__main__':
-    main()
