@@ -21,52 +21,53 @@ def mutate_1BP(input_seq):
     return s1
 
 
+def amplify_one_round(initial_seq_freq:dict, per_base_error_rate:float, prob_death:float, VERBOSE=False):
+    current_level = initial_seq_freq.copy()
+    next_level = collections.defaultdict(int)
+    bplength = len(list(initial_seq_freq.keys())[0])
+
+    for seq, f in tqdm.tqdm(current_level.items(), desc=f'Amplifiying// {len(current_level)} subclones'):
+
+        # a small fraction will disapear
+        died = np.random.binomial(f, p=prob_death)
+        if f == died and VERBOSE:
+            print(f'\t\t{seq} exterminated')
+        f = f-died
+
+        # most molecules wont have an error:
+        error_free_prob = (1- per_base_error_rate)**bplength
+        error_free = np.random.binomial(n=f, p=error_free_prob)
+        if error_free > 0:
+            next_level[seq]+=2*error_free
+
+        # prob_one_error = (1- per_base_error_rate)**(bplength -1) * per_base_error_rate * bplength
+        one_error = f - error_free
+        if one_error > 0 and VERBOSE:
+            print('\t\tMutation')
+        for _ in range(one_error):
+            s1 = mutate_1BP(seq)
+            next_level[s1] += 2
+
+    return next_level
+
+
 def PCR_amplification_with_errors_faster_DICT(initial_seq_freq:dict, rounds, per_base_error_rate, prob_death, VERBOSE=False):
     "same as above, but acting on a DICT instead of a list of dicts"
 
     assert isinstance(initial_seq_freq, dict), 'first argument MUST be a dict'
-
-    bplength = len(list(initial_seq_freq.keys())[0])
-    n_mutations = 0
     current_level = initial_seq_freq.copy()
 
     for cycle in range(rounds):
-        next_level = collections.defaultdict(int)
         total_entities = sum(list(current_level.values()))
-
         print(f'cycle {cycle}:\t{total_entities:.3e} molecules total')
-        for seq, f in tqdm.tqdm(current_level.items(), desc=f'Amplifiying// {len(current_level)} subclones'):
-
-            # a small fraction will disapear
-            died = np.random.binomial(f, p=prob_death)
-            if f == died and VERBOSE:
-                print(f'\t\t{seq} exterminated')
-            f = f-died
-
-            # most molecules wont have an error:
-            error_free_prob = (1- per_base_error_rate)**bplength
-            error_free = np.random.binomial(n=f, p=error_free_prob)
-            if error_free > 0:
-                next_level[seq]+=2*error_free
-
-            # prob_one_error = (1- per_base_error_rate)**(bplength -1) * per_base_error_rate * bplength
-            one_error = f - error_free
-            if one_error > 0 and VERBOSE:
-                print('\t\tMutation')
-            n_mutations += one_error
-            for _ in range(one_error):
-                s1 = mutate_1BP(seq)
-                next_level[s1] += 2
-
+        next_level = amplify_one_round(current_level, per_base_error_rate, prob_death, VERBOSE=False)
         current_level = next_level
 
     total_entities = sum(current_level.values())
-    print(f'Final:\t{total_entities:.3e} molecules total, {n_mutations} errors, {len(next_level)} subclones')
-
+    print(f'Final:\t{total_entities:.3e} molecules total, {len(next_level)} subclones')
 
     final_freqs = current_level.copy()
     return final_freqs
-
 
 
 def main():
