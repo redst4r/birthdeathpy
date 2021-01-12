@@ -9,7 +9,7 @@ setup(name='birthdeathpy',
     maintainer_email='redst4r@web.de',
     license='GNU GPL 3',
     keywords='birth death',
-    packages=find_packages(),
+    packages=['birthdeathpy'],
     install_requires=[
         'toolz',
         'numpy',
