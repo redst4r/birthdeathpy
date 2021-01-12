@@ -3,14 +3,32 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import fire
-from birthdeathpy.simulation import PCR_amplification_with_errors_faster_DICT
+from birthdeathpy.simulation import PCR_amplification_with_errors
 
 #
 # examples:
 # python cli.py simulate_uniform_abundance --n_species 1000 --abundance 1 --rounds 20 --mutation_rate 0.001 --death_probability 0.2 --output_prefix test_
 # python cli.py simulate_dirichlet_abundance --n_species 1000 --n_individuals 10000 --alpha 0.5 --rounds 20 --mutation_rate 0 --death_probability 0.2 --output_prefix test_
 
-def plot_results(output_prefix, initial_seq_freq, final_bcs):
+
+def timecourse_to_dataframe(timecourse):
+
+    bcs = set(timecourse[0].keys())
+    for t in timecourse[1:]:
+        bcs = bcs | t.keys()
+    bcs = sorted(list(bcs))
+
+    df = []
+    for cycle, t in enumerate(timecourse):
+        q = pd.Series(t)
+        q.name= cycle
+        df.append(q)
+
+    df = pd.DataFrame(df).T
+    df[np.isnan(df)] = 0
+    return df.astype(int)
+
+def plot_results(output_prefix, timecourse):
     """
     clone size distribution at t=0 and t-final
     also a scatter of clone size evolution
@@ -19,8 +37,8 @@ def plot_results(output_prefix, initial_seq_freq, final_bcs):
     :param initial_seq_freq: dict of the initial frequencies
     :param final_bcs: dict of the final frequencies
     """
-    X0 = list(initial_seq_freq.values())
-    Xt = list(final_bcs.values())
+    X0 = list(timecourse[0].values())
+    Xt = list(timecourse[-1].values())
     # final clone size
     sns.displot(X0)
     plt.xlabel('Initial clone size')
@@ -40,8 +58,10 @@ def plot_results(output_prefix, initial_seq_freq, final_bcs):
 
     # the entries dont neccesearily match between t0 and tn
     # luckily, we can turn them into defautldicts
-    all_clones = list(set(initial_seq_freq.keys()) | set(final_bcs.keys()))
+    all_clones = list(set(timecourse[0].keys()) | set(timecourse[-1].keys()))
 
+    initial_seq_freq = timecourse[0]
+    final_bcs = timecourse[-1]
     X0 = [initial_seq_freq[clone] if clone in initial_seq_freq else 0 for clone in all_clones]
     Xt = [final_bcs[clone] if clone in final_bcs else 0 for clone in all_clones]
     plt.figure()
@@ -51,6 +71,20 @@ def plot_results(output_prefix, initial_seq_freq, final_bcs):
     plt.tight_layout()
     plt.savefig(f'{output_prefix}clonesize_scatter.png', dpi=300)
 
+
+    df = timecourse_to_dataframe(timecourse)
+    plt.figure()
+    plt.plot(df.T, alpha=0.4)
+    plt.yscale('log')
+    plt.xlabel('Cycles')
+    plt.ylabel('Clone abundance')
+    plt.savefig(f'{output_prefix}clonesize_plot.png', dpi=300)
+
+    # X0 = [initial_seq_freq[clone] if clone in initial_seq_freq else 0 for clone in all_clones]
+    # Xt = [final_bcs[clone] if clone in final_bcs else 0 for clone in all_clones]
+    # plt.figure()
+    # sns.jointplot(x=X0, y=Xt, marginal_kws=dict(bins=25))
+    # plt.savefig(f'{output_prefix}2d_density.png', dpi=300)
 
 def export_clonesizes(the_dict, fname):
     """
@@ -79,12 +113,14 @@ def simulate_uniform_abundance(n_species, abundance, rounds, mutation_rate, deat
     initial_seq_freq = {
             "".join(np.random.choice(['A','G','T','C'], 20)): abundance for _ in range(n_species)
         }
-    final_bcs = PCR_amplification_with_errors_faster_DICT(
+    timecourses = PCR_amplification_with_errors(
                     initial_seq_freq, rounds=rounds,
                     per_base_error_rate=mutation_rate,
                     prob_death=death_probability)
+    final_bcs = timecourses[-1]
+
     if not no_plot:
-        plot_results(output_prefix, initial_seq_freq, final_bcs)
+        plot_results(output_prefix, timecourses)
 
     export_clonesizes(final_bcs, f'{output_prefix}clonesizes.csv')
 
@@ -109,12 +145,14 @@ def simulate_dirichlet_abundance(n_species, n_individuals, alpha, rounds, mutati
     initial_seq_freq = {
             "".join(np.random.choice(['A','G','T','C'], 20)): x0[i] for i in range(n_species)
         }
-    final_bcs = PCR_amplification_with_errors_faster_DICT(
+    timecourses = PCR_amplification_with_errors(
                     initial_seq_freq, rounds=rounds,
                     per_base_error_rate=mutation_rate,
                     prob_death=death_probability)
+    final_bcs = timecourses[-1]
+
     if not no_plot:
-        plot_results(output_prefix, initial_seq_freq, final_bcs)
+        plot_results(output_prefix, timecourses)
     export_clonesizes(final_bcs, f'{output_prefix}clonesizes.csv')
 
 

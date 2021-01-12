@@ -8,7 +8,18 @@ import collections
 import fire
 import toolz
 
+# class BirthDeathSimulator(object):
+#     """docstring for BirthDeathSimulator."""
+#
+#     def __init__(self, per_base_error_rate, prob_death, VERBOSE=False):
+#         self.per_base_error_rate = per_base_error_rate
+#         self.prob_death = prob_death
+#         self.VERBOSE = VERBOSE
+#
+#     def amplify_one_round()
 
+def create_random_sequence(length):
+    return "".join(np.random.choice(['A','G','T','C'], length))
 
 def mutate_1BP(input_seq):
     error_position = np.random.choice(len(input_seq))
@@ -26,7 +37,8 @@ def amplify_one_round(initial_seq_freq:dict, per_base_error_rate:float, prob_dea
     next_level = collections.defaultdict(int)
     bplength = len(list(initial_seq_freq.keys())[0])
 
-    for seq, f in tqdm.tqdm(current_level.items(), desc=f'Amplifiying// {len(current_level)} subclones'):
+    # for seq, f in tqdm.tqdm(current_level.items(), desc=f'Amplifiying {len(current_level)} subclones'):
+    for seq, f in current_level.items():
 
         # a small fraction will disapear
         died = np.random.binomial(f, p=prob_death)
@@ -51,30 +63,33 @@ def amplify_one_round(initial_seq_freq:dict, per_base_error_rate:float, prob_dea
     return next_level
 
 
-def PCR_amplification_with_errors_faster_DICT(initial_seq_freq:dict, rounds, per_base_error_rate, prob_death, VERBOSE=False):
+def PCR_amplification_with_errors(initial_seq_freq:dict, rounds, per_base_error_rate, prob_death, VERBOSE=False):
     "same as above, but acting on a DICT instead of a list of dicts"
 
     assert isinstance(initial_seq_freq, dict), 'first argument MUST be a dict'
-    current_level = initial_seq_freq.copy()
+
+    timecourses =[initial_seq_freq]
 
     for cycle in range(rounds):
-        total_entities = sum(list(current_level.values()))
-        print(f'cycle {cycle}:\t{total_entities:.3e} molecules total')
-        next_level = amplify_one_round(current_level, per_base_error_rate, prob_death, VERBOSE=False)
-        current_level = next_level
+        current_level = timecourses[-1].copy()
 
-    total_entities = sum(current_level.values())
+        total_entities = sum(list(current_level.values()))
+        # print(f'cycle {cycle}:\t{total_entities:.3e} molecules total')
+        next_level = amplify_one_round(current_level, per_base_error_rate, prob_death, VERBOSE=False)
+        timecourses.append(next_level)
+
+    total_entities = sum(timecourses[-1].values())
     print(f'Final:\t{total_entities:.3e} molecules total, {len(next_level)} subclones')
 
-    final_freqs = current_level.copy()
-    return final_freqs
+    # final_freqs = timecourses[-1].copy()
+    return timecourses
 
 
 def main():
 
-    nstart = 2500
+    nstart = 25
     initial_seq_freq = {
-        "".join(np.random.choice(['A','G','T','C'], 20)):1 for _ in range(nstart)
+        create_random_sequence(20):1 for _ in range(nstart)
     }
     rounds  = 50
     """
@@ -82,12 +97,12 @@ def main():
     - barcodes might mutate
     - cells might die, ie, barcodes could go extinct
     """
-    final_bcs = PCR_amplification_with_errors_faster_DICT(
+    timecourses = PCR_amplification_with_errors(
                     initial_seq_freq, rounds=rounds,
                     per_base_error_rate=0,
                     prob_death=0.1)
 
-
+    final_bcs = timecourses[-1]
     # look at the clone-size distribution of the non mutated barcodes
     sns.distplot(list(final_bcs.values()))
 
