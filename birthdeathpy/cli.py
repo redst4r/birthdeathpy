@@ -28,6 +28,7 @@ def timecourse_to_dataframe(timecourse):
     df[np.isnan(df)] = 0
     return df.astype(int)
 
+
 def plot_results(output_prefix, timecourse):
     """
     clone size distribution at t=0 and t-final
@@ -74,7 +75,10 @@ def plot_results(output_prefix, timecourse):
 
     df = timecourse_to_dataframe(timecourse)
     plt.figure()
-    plt.plot(df.T, alpha=0.4)
+    df = df.T
+    if len(df) > 100:
+        df = df.sample(100)
+    plt.plot(df, alpha=0.4)
     plt.yscale('log')
     plt.xlabel('Cycles')
     plt.ylabel('Clone abundance')
@@ -85,6 +89,7 @@ def plot_results(output_prefix, timecourse):
     # plt.figure()
     # sns.jointplot(x=X0, y=Xt, marginal_kws=dict(bins=25))
     # plt.savefig(f'{output_prefix}2d_density.png', dpi=300)
+
 
 def export_clonesizes(the_dict, fname):
     """
@@ -152,12 +157,12 @@ def simulate_dirichlet_abundance(n_species, n_individuals, alpha, rounds, mutati
     final_bcs = timecourses[-1]
 
     if not no_plot:
+        print('plotting')
         plot_results(output_prefix, timecourses)
     export_clonesizes(final_bcs, f'{output_prefix}clonesizes.csv')
 
 
 def main():
-    print('test')
     fire.Fire({
         'simulate_uniform_abundance': simulate_uniform_abundance,
         'simulate_dirichlet_abundance': simulate_dirichlet_abundance,
