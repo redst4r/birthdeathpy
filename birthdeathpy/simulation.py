@@ -85,6 +85,23 @@ def PCR_amplification_with_errors(initial_seq_freq:dict, rounds, per_base_error_
     return timecourses
 
 
+
+def sample_population(pop_dict, n_samples):
+    """
+    taking a subsample from a population vecotr/dict as outputted by sim.PCR_amplification_with_errors
+    probably better to do this with binomial sampling! pybustools!
+    """
+    pop_pool = []
+    for seq, freq in pop_dict.items():
+        pop_pool.extend([seq]*freq)
+
+    x = np.random.choice(pop_pool, n_samples, replace=False)
+    x_dict = collections.defaultdict(int)
+    for el in x:
+        x_dict[el]+=1
+    return x_dict
+
+
 def main():
 
     nstart = 25
